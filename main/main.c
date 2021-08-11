@@ -1,31 +1,45 @@
- /* #include <stdio.h>
+#include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
-#include "esp_wifi.h"
 #include "driver/ledc.h"
-
+#include "driver/periph_ctrl.h"
 
 #define data_LED 17
-#define clk_LED 18
 
+
+void set_1MHz_clock_on_GPIO2(void)
+{
+   periph_module_enable(PERIPH_LEDC_MODULE);
+
+   // Set up timer
+   ledc_timer_config_t ledc_timer = {
+     // We need clock, not PWM so 1 bit is enough.
+     .duty_resolution = LEDC_TIMER_1_BIT,
+
+     // Clock frequency, 1 MHz, high speed
+     .freq_hz = 10000000,
+     .speed_mode = LEDC_LOW_SPEED_MODE,
+     .timer_num = LEDC_TIMER_0,
+
+     // I think not needed for new esp-idf software, try uncommenting
+     .clk_cfg = LEDC_USE_APB_CLK
+   };
+
+   ledc_timer_config(&ledc_timer); // Set up GPIO PIN 
+
+   ledc_channel_config_t channel_config = {
+     .channel    = LEDC_CHANNEL_0,
+     .duty       = 1,
+     .gpio_num   = 18,                        // GPIO pin
+     .speed_mode = LEDC_LOW_SPEED_MODE,
+     .timer_sel  = LEDC_TIMER_0 
+   };
+
+   ledc_channel_config(&channel_config);
+}
 void app_main(void){
-	ledc_timer_config_t ledc_timer = {
-		.speed_mode = LEDC_HIGH_SPEED_MODE,
-		.timer_num  = LEDC_TIMER_0,
-		.bit_num    = 2,
-		.freq_hz    = 20000000
-	};
- 
-	ledc_channel_config_t ledc_channel = {
-		.channel    = LEDC_CHANNEL_0,
-		.gpio_num   = clk_LED,
-		.speed_mode = LEDC_HIGH_SPEED_MODE,
-		.timer_sel  = LEDC_TIMER_0,
-		.duty       = 2
-	};
-	ledc_timer_config(&ledc_timer);
-    ledc_channel_config(&ledc_channel);
+	
 	gpio_config_t io_conf;
 	io_conf.intr_type = GPIO_PIN_INTR_DISABLE;
 	io_conf.mode = GPIO_MODE_OUTPUT_OD;
@@ -33,166 +47,21 @@ void app_main(void){
 	io_conf.pull_down_en = 0;
 	io_conf.pull_up_en = 0;
     gpio_config(&io_conf);
+	//set_1MHz_clock_on_GPIO2();
+	set_1MHz_clock_on_GPIO2();
+	int clock_level = gpio_get_level(GPIO_NUM_18);
+	printf("%d\n",clock_level);
     // Main loop
-    while(true) {
-        gpio_set_level(data_LED, 0);
-		printf("Off\n");
-        vTaskDelay(500 / portTICK_RATE_MS);
-        gpio_set_level(data_LED, 1);
-		printf("On\n");
-        vTaskDelay(500 / portTICK_RATE_MS);
-    }
-}
- */
-#include <stdio.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "driver/ledc.h"
-#include "esp_err.h"
-
-/*
- * About this example
- *
- * 1. Start with initializing LEDC module:
- *    a. Set the timer of LEDC first, this determines the frequency
- *       and resolution of PWM.
- *    b. Then set the LEDC channel you want to use,
- *       and bind with one of the timers.
- *
- * 2. You need first to install a default fade function,
- *    then you can use fade APIs.
- *
- * 3. You can also set a target duty directly without fading.
- *
- * 4. This example uses GPIO18/19/4/5 as LEDC output,
- *    and it will change the duty repeatedly.
- *
- * 5. GPIO18/19 are from high speed channel group.
- *    GPIO4/5 are from low speed channel group.
- *
- */
-#ifdef CONFIG_IDF_TARGET_ESP32
-#define LEDC_HS_TIMER          LEDC_TIMER_0
-#define LEDC_HS_MODE           LEDC_HIGH_SPEED_MODE
-#define LEDC_HS_CH0_GPIO       (18)
-#define LEDC_HS_CH0_CHANNEL    LEDC_CHANNEL_0
-#define LEDC_HS_CH1_GPIO       (19)
-#define LEDC_HS_CH1_CHANNEL    LEDC_CHANNEL_1
-#endif
-#define LEDC_LS_TIMER          LEDC_TIMER_1
-#define LEDC_LS_MODE           LEDC_LOW_SPEED_MODE
-#ifdef CONFIG_IDF_TARGET_ESP32S2
-#define LEDC_LS_CH0_GPIO       (18)
-#define LEDC_LS_CH0_CHANNEL    LEDC_CHANNEL_0
-#define LEDC_LS_CH1_GPIO       (19)
-#define LEDC_LS_CH1_CHANNEL    LEDC_CHANNEL_1
-#endif
-
-#define LEDC_TEST_CH_NUM       (4)
-#define LEDC_TEST_DUTY         (4000)
-#define LEDC_TEST_FADE_TIME    (3000)
-
-void app_main(void)
-{
-    int ch;
-
-    /*
-     * Prepare and set configuration of timers
-     * that will be used by LED Controller
-     */
-    ledc_timer_config_t ledc_timer = {
-        .duty_resolution = LEDC_TIMER_13_BIT, // resolution of PWM duty
-        .freq_hz = 5000,                      // frequency of PWM signal
-        .speed_mode = LEDC_LS_MODE,           // timer mode
-        .timer_num = LEDC_LS_TIMER,            // timer index
-        .clk_cfg = LEDC_AUTO_CLK,              // Auto select the source clock
-    };
-    // Set configuration of timer0 for high speed channels
-    ledc_timer_config(&ledc_timer);
-#ifdef CONFIG_IDF_TARGET_ESP32
-    // Prepare and set configuration of timer1 for low speed channels
-    ledc_timer.speed_mode = LEDC_HS_MODE;
-    ledc_timer.timer_num = LEDC_HS_TIMER;
-    ledc_timer_config(&ledc_timer);
-#endif
-    /*
-     * Prepare individual configuration
-     * for each channel of LED Controller
-     * by selecting:
-     * - controller's channel number
-     * - output duty cycle, set initially to 0
-     * - GPIO number where LED is connected to
-     * - speed mode, either high or low
-     * - timer servicing selected channel
-     *   Note: if different channels use one timer,
-     *         then frequency and bit_num of these channels
-     *         will be the same
-     */
-    ledc_channel_config_t ledc_channel[LEDC_TEST_CH_NUM] = {
-#ifdef CONFIG_IDF_TARGET_ESP32
-        {
-            .channel    = LEDC_HS_CH0_CHANNEL,
-            .duty       = 0,
-            .gpio_num   = LEDC_HS_CH0_GPIO,
-            .speed_mode = LEDC_HS_MODE,
-            .hpoint     = 0,
-            .timer_sel  = LEDC_HS_TIMER
-        },
-        {
-            .channel    = LEDC_HS_CH1_CHANNEL,
-            .duty       = 0,
-            .gpio_num   = LEDC_HS_CH1_GPIO,
-            .speed_mode = LEDC_HS_MODE,
-            .hpoint     = 0,
-            .timer_sel  = LEDC_HS_TIMER
-        },
-#elif defined CONFIG_IDF_TARGET_ESP32S2
-        {
-            .channel    = LEDC_LS_CH0_CHANNEL,
-            .duty       = 0,
-            .gpio_num   = LEDC_LS_CH0_GPIO,
-            .speed_mode = LEDC_LS_MODE,
-            .hpoint     = 0,
-            .timer_sel  = LEDC_LS_TIMER
-        },
-        {
-            .channel    = LEDC_LS_CH1_CHANNEL,
-            .duty       = 0,
-            .gpio_num   = LEDC_LS_CH1_GPIO,
-            .speed_mode = LEDC_LS_MODE,
-            .hpoint     = 0,
-            .timer_sel  = LEDC_LS_TIMER
-        },
-#endif
-    };
-
-    // Set LED Controller with previously prepared configuration
-    for (ch = 0; ch < LEDC_TEST_CH_NUM; ch++) {
-        ledc_channel_config(&ledc_channel[ch]);
-    }
-
-    // Initialize fade service.
-    ledc_fade_func_install(0);
-
-    while (1) {
-        printf("1. LEDC fade up to duty = %d\n", LEDC_TEST_DUTY);
-        for (ch = 0; ch < LEDC_TEST_CH_NUM; ch++) {
-            ledc_set_fade_with_time(ledc_channel[ch].speed_mode,
-                    ledc_channel[ch].channel, LEDC_TEST_DUTY, LEDC_TEST_FADE_TIME);
-            ledc_fade_start(ledc_channel[ch].speed_mode,
-                    ledc_channel[ch].channel, LEDC_FADE_NO_WAIT);
-        }
-        vTaskDelay(LEDC_TEST_FADE_TIME / portTICK_PERIOD_MS);
-
-        printf("2. LEDC fade down to duty = 0\n");
-        for (ch = 0; ch < LEDC_TEST_CH_NUM; ch++) {
-            ledc_set_fade_with_time(ledc_channel[ch].speed_mode,
-                    ledc_channel[ch].channel, 0, LEDC_TEST_FADE_TIME);
-            ledc_fade_start(ledc_channel[ch].speed_mode,
-                    ledc_channel[ch].channel, LEDC_FADE_NO_WAIT);
-        }
-        vTaskDelay(LEDC_TEST_FADE_TIME / portTICK_PERIOD_MS);
-
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-    }
-}
+    while(1) {
+		/* set_1MHz_clock_on_GPIO2();*/
+		int clock_level = gpio_get_level(GPIO_NUM_2);
+		printf("%d\n",clock_level);
+		/*         gpio_set_level(clk_LED, 0);
+		printf("___\n");
+        vTaskDelay(1000 / portTICK_RATE_MS);
+        gpio_set_level(clk_LED, 1);
+		printf("---\n");
+        vTaskDelay(1000 / portTICK_RATE_MS); */
+  }
+	printf("\n");
+} 
