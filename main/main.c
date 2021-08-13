@@ -48,20 +48,21 @@ void set_1MHz_clock_on_GPIO18(void)
 	
 	ledc_channel_config(&channel_config);
 };
-const uint8_t data_set [10]={
-	0x0000,
-	0x0001,
-	0x0010,
-	0x0011,
-	0x0100,
-	0x0101,
-	0x0110,
-	0x0111,
-	0x1000,
-	0x1001
-};
+/* const uint8_t data_set [10]={
+	0b0000,
+	0b0001,
+	0b0010,
+	0b0011,
+	0b0100,
+	0b0101,
+	0b0110,
+	0b0111,
+	0b1000,
+	0b1001
+}; */
 
 void app_main(void){
+	uint8_t data = 0b0000;
 	//_74hc595_test();
 	//int data = 0x0000;
 	gpio_config_t io_conf;
@@ -81,14 +82,16 @@ void app_main(void){
 		gpio_set_level(GPIO_NUM_18, 1);
 		clock_level = gpio_get_level(GPIO_NUM_18);
 		if ((clock_level == 0) && (i != 10)){
-			printf("%d\n",data_set[i]);
-			i +=1;
+			printf("%d",data);
+			data += 1;
+			i += 1;
 			vTaskDelay(100);
 		} else{
+			printf("\n");
 			printf("thats all\n");
 			break;
 		}
-		gpio_set_level(GPIO_NUM_18, 1);
+		//gpio_set_level(GPIO_NUM_18, 1);
 		//printf("%d\n", data);
 	};
 	//printf("\n");
