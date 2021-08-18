@@ -81,11 +81,11 @@ void ht1613_send_byte(uint8_t byte)
 {
 	for (uint8_t i = 0; i < 4; i++ )
 	{	
-		gpio_set_direction(GPIO_NUM_17, GPIO_MODE_INPUT_OUTPUT);
-		int clock_level = byte & 0b0001;
+		gpio_set_direction(data_LED, GPIO_MODE_INPUT_OUTPUT);
+		int clock_level = byte & 0b1000;
 		gpio_set_level(GPIO_NUM_17, clock_level);
-		clock_level = gpio_get_level(GPIO_NUM_17);
-		byte >>= 1;
+		clock_level = gpio_get_level(data_LED);
+		byte <<= 1;
 		printf("level data: %d\n", clock_level);
 	};
 	data += 0b0001;
