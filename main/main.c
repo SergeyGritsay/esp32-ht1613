@@ -9,7 +9,7 @@
 #include "esp_log.h"
 
 #define data_LED GPIO_NUM_17
-uint8_t data = 0b0000;
+uint8_t data = 0b0001;
 
 void set_1MHz_clock_on_GPIO18(void)
 {
@@ -49,7 +49,7 @@ void set_1MHz_clock_on_GPIO18(void)
 };
 
 /* data example 
-	0x0, 0b0000, 0
+	0x0, 0b0000, 
 	0x1, 0b0001, 1
 	0x2, 0b0010, 2
 	0x3, 0b0011, 3
@@ -59,20 +59,28 @@ void set_1MHz_clock_on_GPIO18(void)
 	0x7, 0b0111, 7
 	0x8, 0b1000, 8
 	0x9, 0b1001  9
+	0xA,0b1010  0
+	
+	or 8-code ????????
+	
 */
 
-void set_low_level(int gpio_output){
+void set_low_level(int gpio_output)
+{
 	gpio_set_direction(gpio_output, GPIO_MODE_INPUT_OUTPUT);
 	int clock_level = 0;
 	gpio_set_level(gpio_output, clock_level);
+	vTaskDelay(200);
 	clock_level = gpio_get_level(gpio_output);
 	//printf("level: %d\n",clock_level);
 }
 
-void set_high_level(int gpio_output){
+void set_high_level(int gpio_output)
+{
 	gpio_set_direction(gpio_output, GPIO_MODE_INPUT_OUTPUT);
 	int clock_level = 1;
 	gpio_set_level(gpio_output, clock_level);
+	vTaskDelay(100);
 	clock_level = gpio_get_level(gpio_output);
 	//printf("level: %d\n", clock_level);
 }
@@ -82,14 +90,14 @@ void ht1613_send_byte(uint8_t byte)
 	for (uint8_t i = 0; i < 4; i++ )
 	{	
 		gpio_set_direction(data_LED, GPIO_MODE_INPUT_OUTPUT);
-		int clock_level = byte & 0b1000;
-		gpio_set_level(GPIO_NUM_17, clock_level);
-		clock_level = gpio_get_level(data_LED);
+		int data_level = byte & 0b1000;
+		gpio_set_level(GPIO_NUM_17, data_level);
+		data_level = gpio_get_level(data_LED);
 		byte <<= 1;
-		printf("level data: %d\n", clock_level);
+		printf("level data: %d\n", data_level);
 	};
-	data += 0b0001;
 }
+
 
 void app_main(void){
 	gpio_config_t io_conf = {
@@ -102,24 +110,31 @@ void app_main(void){
     gpio_config(&io_conf);
 	set_1MHz_clock_on_GPIO18();
 	// Main loop
-    while(1) {
-		if ((gpio_get_level(GPIO_NUM_18) == 0) && (data <= 0b1001)){
+    while(1) 
+	{
+		if ((gpio_get_level(GPIO_NUM_18) == 0) && (data <= 0b1010))
+		{
 			printf("data: %d\n", data);
 			ht1613_send_byte(data);
+			data += 0b0001;
+			vTaskDelay(300);
 			set_high_level(GPIO_NUM_18);
 			//data += 0b0001;
-			vTaskDelay(1000 / portTICK_PERIOD_MS);
+			//vTaskDelay(1000 / portTICK_PERIOD_MS);
 			//printf("%d\n", data);
-		} else {
-			if ((data <= 0b1001) /*|| (gpio_get_level(GPIO_NUM_18 == 1))*/){
+		} else 
+		{
+			if ((data <= 0b1010) && (gpio_get_level(GPIO_NUM_18 == 1)))
+			{
 				//printf("thats all\n");
 				set_low_level(GPIO_NUM_18);
-				vTaskDelay(1000 / portTICK_PERIOD_MS);
+				//vTaskDelay(1000 / portTICK_PERIOD_MS);
 				//break;
 			} 
-		else {
+		else
+			{
 				break;
 			};
 		};
-		};	
+	};
 } 
